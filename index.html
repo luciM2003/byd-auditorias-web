@@ -191,7 +191,17 @@ a{ color:inherit; }
 .item{ padding:11px 0; border-bottom:1px solid var(--line); }
 .item:last-child{ border-bottom:none; }
 .item-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-.item-label{ flex:1; min-width:180px; font-size:13.5px; }
+.item-label-wrap{ flex:1; min-width:180px; display:flex; align-items:center; gap:5px; }
+.item-label-wrap .item-label{ font-size:13.5px; }
+.item-label-wrap.editing{ display:block; }
+.item-label-input{
+  width:100%; border:1px solid var(--accent); border-radius:8px; padding:6px 9px; font-size:13.5px;
+  background:var(--surface); color:var(--ink); font-family:inherit;
+}
+.label-edit-btn, .label-reset-btn{
+  border:none; background:none; cursor:pointer; color:var(--ink-faint); font-size:12.5px; padding:2px 4px; flex:none; line-height:1;
+}
+.label-edit-btn:hover, .label-reset-btn:hover{ color:var(--accent); }
 .item-toggle{ display:flex; border:1px solid var(--line-strong); border-radius:8px; overflow:hidden; flex:none; }
 .opt{ border:none; background:var(--surface); color:var(--ink-muted); font-size:12.5px; font-weight:600; padding:7px 12px; cursor:pointer; }
 .opt + .opt{ border-left:1px solid var(--line-strong); }
@@ -373,6 +383,73 @@ var MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','
 
 function itemId(tipo,si,ii){ return tipo+'_'+si+'_'+ii; }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+/* ---------- Edición de preguntas (texto de los puntos) ---------- */
+var ITEM_OVERRIDES_KEY = 'byd_item_overrides_v1';
+function getItemOverrides(){ try{ return JSON.parse(localStorage.getItem(ITEM_OVERRIDES_KEY)||'{}'); }catch(e){ return {}; } }
+function saveItemOverrides(all){ try{ localStorage.setItem(ITEM_OVERRIDES_KEY, JSON.stringify(all)); }catch(e){} }
+function resolvedLabel(tipo, si, ii){
+  var original = AUDITS[tipo].sections[si].items[ii];
+  var custom = getItemOverrides()[itemId(tipo,si,ii)];
+  return (custom && custom.trim()) ? custom : original;
+}
+function setItemLabelOverride(tipo, si, ii, text){
+  var id = itemId(tipo, si, ii);
+  var original = AUDITS[tipo].sections[si].items[ii];
+  var all = getItemOverrides();
+  var trimmed = (text||'').trim();
+  if(!trimmed || trimmed===original) delete all[id]; else all[id] = trimmed;
+  saveItemOverrides(all);
+}
+function labelWrapHTML(tipo, si, ii){
+  var id = itemId(tipo, si, ii);
+  var custom = getItemOverrides()[id];
+  var text = (custom && custom.trim()) ? custom : AUDITS[tipo].sections[si].items[ii];
+  return '<span class="item-label-wrap" data-item="'+id+'">'
+    + '<span class="item-label">'+esc(text)+'</span>'
+    + '<button type="button" class="label-edit-btn" data-action="edit-item-label" data-tipo="'+tipo+'" data-sec="'+si+'" data-ii="'+ii+'" title="Editar el texto de este punto (se guarda solo)">✎</button>'
+    + (custom ? '<button type="button" class="label-reset-btn" data-action="reset-item-label" data-tipo="'+tipo+'" data-sec="'+si+'" data-ii="'+ii+'" title="Restaurar el texto original">↺</button>' : '')
+    + '</span>';
+}
+var labelSaveTimers = {};
+function startEditLabel(tipo, si, ii){
+  var id = itemId(tipo, si, ii);
+  var wrap = app.querySelector('.item-label-wrap[data-item="'+id+'"]');
+  if(!wrap) return;
+  var current = resolvedLabel(tipo, si, ii);
+  wrap.classList.add('editing');
+  wrap.innerHTML = '<input type="text" class="item-label-input" value="'+esc(current)+'">';
+  var input = wrap.querySelector('input');
+  input.focus();
+  input.select();
+  var key = tipo+'_'+si+'_'+ii;
+  input.addEventListener('input', function(){
+    clearTimeout(labelSaveTimers[key]);
+    labelSaveTimers[key] = setTimeout(function(){
+      setItemLabelOverride(tipo, si, ii, input.value);
+      flashSaved();
+    }, 500);
+  });
+  function commit(){
+    clearTimeout(labelSaveTimers[key]);
+    setItemLabelOverride(tipo, si, ii, input.value);
+    wrap.classList.remove('editing');
+    wrap.outerHTML = labelWrapHTML(tipo, si, ii);
+    flashSaved();
+  }
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', function(ev){
+    if(ev.key==='Enter'){ ev.preventDefault(); input.blur(); }
+    else if(ev.key==='Escape'){ input.value = current; input.blur(); }
+  });
+}
+function resetItemLabel(tipo, si, ii){
+  setItemLabelOverride(tipo, si, ii, '');
+  var id = itemId(tipo, si, ii);
+  var wrap = app.querySelector('.item-label-wrap[data-item="'+id+'"]');
+  if(wrap) wrap.outerHTML = labelWrapHTML(tipo, si, ii);
+  flashSaved();
+}
 function todayISO(){ var d=new Date(); var local=new Date(d.getTime()-d.getTimezoneOffset()*60000); return local.toISOString().slice(0,10); }
 function nowISO(){ return new Date().toISOString(); }
 function fmtFecha(iso){ if(!iso) return '—'; var p=iso.split('-'); return p.length===3? p[2]+'/'+p[1]+'/'+p[0] : iso; }
@@ -637,7 +714,7 @@ function buildAuditPdf(a, fotos, firma){
     def.sections[si].items.forEach(function(label, ii){
       var id = itemId(a.tipo, si, ii);
       var r = (a.respuestas||{})[id];
-      if(r && r.valor==='no_cumple') items.push({id:id, label:label, comentario:r.comentario});
+      if(r && r.valor==='no_cumple') items.push({id:id, label:resolvedLabel(a.tipo, si, ii), comentario:r.comentario});
     });
     return {nombre:s.nombre, items:items};
   }).filter(function(g){ return g.items.length>0; });
@@ -671,7 +748,7 @@ function buildAuditPdf(a, fotos, firma){
   def.sections.forEach(function(sec, si){
     sec.items.forEach(function(label, ii){
       var id = itemId(a.tipo, si, ii);
-      if(fotos[id] && fotos[id].dataUrl) withPhoto.push({id:id, label:label});
+      if(fotos[id] && fotos[id].dataUrl) withPhoto.push({id:id, label:resolvedLabel(a.tipo, si, ii)});
     });
   });
   if(withPhoto.length){
@@ -1102,6 +1179,8 @@ app.addEventListener('click', function(e){
     var target = document.getElementById('sec-'+el.dataset.sec);
     if(target) target.scrollIntoView({behavior:'smooth', block:'start'});
   }
+  else if(a==='edit-item-label'){ startEditLabel(el.dataset.tipo, Number(el.dataset.sec), Number(el.dataset.ii)); }
+  else if(a==='reset-item-label'){ resetItemLabel(el.dataset.tipo, Number(el.dataset.sec), Number(el.dataset.ii)); }
 });
 app.addEventListener('input', function(e){
   var t = e.target;
@@ -1317,7 +1396,7 @@ function renderForm(){
       var open = !!state.commentsOpen[id];
       out += '<div class="item '+(r.valor?'is-'+r.valor:'')+'" data-item="'+id+'">'
         + '<div class="item-row">'
-          + '<span class="item-label">'+esc(label)+'</span>'
+          + labelWrapHTML(tipo, si, ii)
           + '<div class="item-toggle">'
             + '<button class="opt opt-si '+(r.valor==='cumple'?'active':'')+'" type="button" data-action="set-val" data-item="'+id+'" data-val="cumple">Cumple</button>'
             + '<button class="opt opt-no '+(r.valor==='no_cumple'?'active':'')+'" type="button" data-action="set-val" data-item="'+id+'" data-val="no_cumple">No cumple</button>'
@@ -1427,7 +1506,7 @@ function renderResult(){
     def.sections[si].items.forEach(function(label, ii){
       var id = itemId(a.tipo, si, ii);
       var r = (a.respuestas||{})[id];
-      if(r && r.valor==='no_cumple') items.push({id:id, label:label, comentario:r.comentario});
+      if(r && r.valor==='no_cumple') items.push({id:id, label:resolvedLabel(a.tipo, si, ii), comentario:r.comentario});
     });
     return {nombre:s.nombre, items:items};
   }).filter(function(g){ return g.items.length>0; });
