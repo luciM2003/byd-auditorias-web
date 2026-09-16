@@ -236,8 +236,9 @@ a{ color:inherit; }
   margin-block:20px -80px; margin-inline:calc(var(--gutter) * -1);
   padding-inline:var(--gutter); padding-block-start:12px; padding-block-end:calc(env(safe-area-inset-bottom,0px) + 12px);
 }
-.bottombar-inner{ max-width:1080px; margin:0 auto; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
-.progress-wrap{ flex:1; min-width:160px; }
+.bottombar-inner{ max-width:1080px; margin:0 auto; display:flex; flex-direction:column; align-items:center; gap:10px; }
+.progress-wrap{ width:100%; }
+.bottombar-actions{ display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; }
 .progress-track{ height:7px; border-radius:99px; background:var(--surface-2); overflow:hidden; }
 .progress-fill{ height:100%; background:var(--accent); border-radius:99px; transition:width .2s; }
 .progress-label{ font-size:11.5px; color:var(--ink-muted); margin-top:4px; font-family:'IBM Plex Mono',monospace; }
@@ -1432,9 +1433,11 @@ function renderForm(){
 
   out += '<div class="bottombar"><div class="bottombar-inner">'
     + '<div class="progress-wrap"><div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:'+(sc.totalItems? sc.totalRespondidos/sc.totalItems*100:0)+'%"></div></div><div class="progress-label" id="progress-label">'+sc.totalRespondidos+' / '+sc.totalItems+' ítems respondidos</div></div>'
+    + '<div class="bottombar-actions">'
     + (editing
         ? '<button class="btn primary" type="button" data-action="exit-edit">Listo</button>'
         : '<span class="finalize-msg" id="finalize-msg" hidden></span><button class="btn primary" type="button" data-action="go-firma">Finalizar y firmar</button>')
+    + '</div>'
   + '</div></div>';
 
   return out;
