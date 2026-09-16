@@ -627,6 +627,35 @@ function stGetFirma(auditId){
   return Promise.resolve(localFirmasAll()[auditId]||null);
 }
 
+/* ---------- migración: subir lo guardado en este dispositivo a la base compartida ---------- */
+var MIGRATED_KEY = 'byd_migrated_v1';
+function pendingLocalCount(){
+  try{ return Object.keys(localAll()).length; }catch(e){ return 0; }
+}
+function migrateLocalToSupabase(){
+  if(!supa) return Promise.reject(new Error('La base compartida no está conectada.'));
+  var audits = localAll();
+  var fotosByAudit = localFotosAll();
+  var firmasByAudit = localFirmasAll();
+  var ids = Object.keys(audits);
+  if(!ids.length) return Promise.resolve({audits:0, fotos:0, firmas:0});
+  var auditRows = ids.map(function(id){ return audits[id]; });
+  var fotoRows = [];
+  var firmaRows = [];
+  ids.forEach(function(id){
+    var fotos = fotosByAudit[id];
+    if(fotos) Object.keys(fotos).forEach(function(itemIdVal){
+      fotoRows.push(Object.assign({auditoriaId:id, itemId:itemIdVal}, fotos[itemIdVal]));
+    });
+    var firma = firmasByAudit[id];
+    if(firma) firmaRows.push(Object.assign({auditoriaId:id}, firma));
+  });
+  return supa.from('auditorias').upsert(auditRows, {onConflict:'id'}).then(throwIfError)
+    .then(function(){ return fotoRows.length? supa.from('fotos').upsert(fotoRows, {onConflict:'auditoriaId,itemId'}).then(throwIfError) : null; })
+    .then(function(){ return firmaRows.length? supa.from('firmas').upsert(firmaRows, {onConflict:'auditoriaId'}).then(throwIfError) : null; })
+    .then(function(){ return {audits:auditRows.length, fotos:fotoRows.length, firmas:firmaRows.length}; });
+}
+
 /* ---------- image compression ---------- */
 function compressImageFile(file){
   return new Promise(function(resolve, reject){
@@ -1196,6 +1225,23 @@ app.addEventListener('click', function(e){
   }
   else if(a==='edit-item-label'){ startEditLabel(el.dataset.tipo, Number(el.dataset.sec), Number(el.dataset.ii)); }
   else if(a==='reset-item-label'){ resetItemLabel(el.dataset.tipo, Number(el.dataset.sec), Number(el.dataset.ii)); }
+  else if(a==='migrate-local'){
+    el.disabled = true;
+    el.textContent = 'Subiendo…';
+    migrateLocalToSupabase().then(function(r){
+      localStorage.setItem(MIGRATED_KEY, '1');
+      showToast('Se subieron '+r.audits+' auditoría(s) a la base compartida.');
+      goHome();
+    }).catch(function(err){
+      el.disabled = false;
+      el.textContent = 'Subir ahora';
+      showToast((err&&err.message)||'No se pudieron subir. Probá de nuevo.', true);
+    });
+  }
+  else if(a==='dismiss-migrate'){
+    localStorage.setItem(MIGRATED_KEY, '1');
+    goHome();
+  }
 });
 app.addEventListener('input', function(e){
   var t = e.target;
@@ -1312,6 +1358,13 @@ function renderView(){
 function renderHome(){
   var out = '';
   out += '<div class="page-head"><h1>Auditorías Yacopini BYD</h1><p>Relevamiento digital de ventas, postventa, administración e imagen de marca. Elegí un área para iniciar una auditoría en el punto de venta.</p></div>';
+
+  if(supa && localStorage.getItem(MIGRATED_KEY)!=='1' && pendingLocalCount()>0){
+    out += '<div class="banner">'
+      + '<div>Este dispositivo tiene <strong>'+pendingLocalCount()+' auditoría(s)</strong> guardadas antes de conectar la base compartida. Subilas para que se vean junto con las de todos.</div>'
+      + '<div class="banner-actions"><button class="btn primary sm" data-action="migrate-local" type="button">Subir ahora</button><button class="btn ghost sm" data-action="dismiss-migrate" type="button">Ya las subí / ignorar</button></div>'
+    + '</div>';
+  }
 
   if(state.draftInfo){
     var d = state.draftInfo;
