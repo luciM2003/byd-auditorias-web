@@ -193,7 +193,15 @@ a{ color:inherit; }
 .item-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .item-label-wrap{ flex:1; min-width:180px; display:flex; align-items:center; gap:5px; }
 .item-label-wrap .item-label{ font-size:13.5px; }
-.item-label-wrap.editing{ display:block; }
+.item-label-wrap.editing{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.item-label-wrap.editing .item-label-input{ flex:1; min-width:140px; }
+.label-save-btn{
+  border:none; border-radius:8px; background:var(--accent); color:#fff; font-size:12.5px; font-weight:600;
+  padding:7px 12px; cursor:pointer; flex:none; white-space:nowrap;
+}
+.label-save-btn:hover{ opacity:.9; }
+/* La insignia que agrega Netlify puede quedar arriba de nuestros botones; que no bloquee los taps */
+#nl-badge-frame, .nl-badge{ pointer-events:none !important; }
 .item-label-input{
   width:100%; border:1px solid var(--accent); border-radius:8px; padding:6px 9px; font-size:13.5px;
   background:var(--surface); color:var(--ink); font-family:inherit;
@@ -418,8 +426,10 @@ function startEditLabel(tipo, si, ii){
   if(!wrap) return;
   var current = resolvedLabel(tipo, si, ii);
   wrap.classList.add('editing');
-  wrap.innerHTML = '<input type="text" class="item-label-input" value="'+esc(current)+'">';
+  wrap.innerHTML = '<input type="text" class="item-label-input" value="'+esc(current)+'">'
+    + '<button type="button" class="label-save-btn">Guardar</button>';
   var input = wrap.querySelector('input');
+  var saveBtn = wrap.querySelector('.label-save-btn');
   input.focus();
   input.select();
   var key = tipo+'_'+si+'_'+ii;
@@ -430,17 +440,21 @@ function startEditLabel(tipo, si, ii){
       flashSaved();
     }, 500);
   });
+  var committed = false;
   function commit(){
+    if(committed) return;
+    committed = true;
     clearTimeout(labelSaveTimers[key]);
     setItemLabelOverride(tipo, si, ii, input.value);
     wrap.classList.remove('editing');
     wrap.outerHTML = labelWrapHTML(tipo, si, ii);
     flashSaved();
   }
+  saveBtn.addEventListener('click', commit);
   input.addEventListener('blur', commit);
   input.addEventListener('keydown', function(ev){
-    if(ev.key==='Enter'){ ev.preventDefault(); input.blur(); }
-    else if(ev.key==='Escape'){ input.value = current; input.blur(); }
+    if(ev.key==='Enter'){ ev.preventDefault(); commit(); }
+    else if(ev.key==='Escape'){ input.value = current; commit(); }
   });
 }
 function resetItemLabel(tipo, si, ii){
@@ -1355,7 +1369,7 @@ function renderForm(){
   var def = AUDITS[tipo];
   var sc = computeScores(tipo, state.formData.respuestas);
   var out = '';
-  out += '<input type="file" id="photo-file-input" accept="image/*" hidden>';
+  out += '<input type="file" id="photo-file-input" accept="image/*" capture="environment" hidden>';
   if(editing){
     out += state.editFirma
       ? '<div class="banner"><div>Auditoría firmada por <strong>'+esc(state.editFirma.firmante||'')+'</strong> el '+fmtFechaHora(state.editFirma.firmadoEn)+'. Los cambios se guardan solos y no modifican la firma original.</div></div>'
