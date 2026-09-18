@@ -815,9 +815,9 @@ function buildAuditPdf(a, fotos, firma){
   def.sections.forEach(function(sec, si){
     sec.items.forEach(function(label, ii){
       var id = itemId(a.tipo, si, ii);
-      if(fotos[id] && fotos[id].dataUrl){
-        var r = (a.respuestas||{})[id];
-        withPhoto.push({id:id, label:resolvedLabel(a.tipo, si, ii), estado:(r&&r.valor)||null});
+      var r = (a.respuestas||{})[id];
+      if(fotos[id] && fotos[id].dataUrl && r && r.valor==='no_cumple'){
+        withPhoto.push({id:id, label:resolvedLabel(a.tipo, si, ii), estado:r.valor});
       }
     });
   });
