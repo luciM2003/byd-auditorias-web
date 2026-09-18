@@ -708,6 +708,29 @@ function drawPdfFooter(doc, pageW, pageH){
   try{ doc.addImage(PDF_WORDMARK_URL, 'PNG', (pageW-wmW)/2, waveY-16, wmW, wmH); }catch(e){}
 }
 
+var OK = [30,123,77];
+var BAD = [178,58,46];
+var WARN = [166,106,10];
+function drawStatusBadge(doc, x, y, estado){
+  var color = estado==='cumple' ? OK : estado==='no_cumple' ? BAD : WARN;
+  doc.setFillColor.apply(doc, color);
+  doc.setDrawColor(255,255,255);
+  doc.setLineWidth(1.4);
+  doc.circle(x, y, 9, 'FD');
+  doc.setDrawColor(255,255,255);
+  doc.setLineWidth(1.6);
+  if(estado==='cumple'){
+    doc.line(x-4, y+0.5, x-1, y+3.8);
+    doc.line(x-1, y+3.8, x+4.6, y-3.8);
+  } else if(estado==='no_cumple'){
+    doc.line(x-3.6, y-3.6, x+3.6, y+3.6);
+    doc.line(x-3.6, y+3.6, x+3.6, y-3.6);
+  } else {
+    doc.line(x-3.6, y, x+3.6, y);
+  }
+  doc.setLineWidth(0.5);
+}
+
 /* ---------- PDF generation ---------- */
 function buildAuditPdf(a, fotos, firma){
   fotos = fotos || {};
@@ -792,7 +815,10 @@ function buildAuditPdf(a, fotos, firma){
   def.sections.forEach(function(sec, si){
     sec.items.forEach(function(label, ii){
       var id = itemId(a.tipo, si, ii);
-      if(fotos[id] && fotos[id].dataUrl) withPhoto.push({id:id, label:resolvedLabel(a.tipo, si, ii)});
+      if(fotos[id] && fotos[id].dataUrl){
+        var r = (a.respuestas||{})[id];
+        withPhoto.push({id:id, label:resolvedLabel(a.tipo, si, ii), estado:(r&&r.valor)||null});
+      }
     });
   });
   if(withPhoto.length){
@@ -807,6 +833,7 @@ function buildAuditPdf(a, fotos, firma){
       var ratio = Math.min(cellW/fw, cellH/fh);
       var dw = fw*ratio, dh = fh*ratio;
       try{ doc.addImage(foto.dataUrl, 'JPEG', x, y, dw, dh); }catch(e){}
+      drawStatusBadge(doc, x+16, y+16, p.estado);
       doc.setFontSize(9); doc.setFont('helvetica','normal'); doc.setTextColor(90);
       var cap = doc.splitTextToSize(p.label, cellW);
       doc.text(cap, x, y+cellH+12);
